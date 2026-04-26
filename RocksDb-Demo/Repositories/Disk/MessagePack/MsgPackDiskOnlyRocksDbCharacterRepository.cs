@@ -6,16 +6,16 @@ using RocksDbSharp;
 
 namespace RocksDb_Demo.Repositories.Disk.MessagePack;
 
-class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository, IDisposable
+internal class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository, IDisposable
 {
-    private readonly RocksDb             _db;
+    private readonly RocksDb _db;
     private readonly ThreadLocal<byte[]> _keyBuffer = new(() => new byte[8]);
 
     public MsgPackDiskOnlyRocksDbCharacterRepository()
     {
         var dbPath = Path.Combine(AppContext.BaseDirectory, "rocksdb-msgpack-diskonly");
         if (Directory.Exists(dbPath))
-            Directory.Delete(dbPath, recursive: true);
+            Directory.Delete(dbPath, true);
         Directory.CreateDirectory(dbPath);
         _db = RocksDb.Open(new RocksDbSettings { Mode = RocksDbMode.DiskOnly }.BuildDbOptions(), dbPath);
         Console.WriteLine($"RocksDB (MsgPack - DiskOnly) ready at: {dbPath}");
@@ -41,6 +41,13 @@ class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository, IDisposa
         BinaryPrimitives.WriteInt64BigEndian(key, id);
         var value = _db.Get(key);
         return value is null ? null : MessagePackSerializer.Deserialize<PlayerCharacter>(value);
+    }
+
+    public void UpdateCharacter(PlayerCharacter character)
+    {
+        var key = _keyBuffer.Value!;
+        BinaryPrimitives.WriteInt64BigEndian(key, character.Id);
+        _db.Put(key, MessagePackSerializer.Serialize(character));
     }
 
     public void Dispose()

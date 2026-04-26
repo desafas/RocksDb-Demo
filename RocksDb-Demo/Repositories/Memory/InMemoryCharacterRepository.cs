@@ -3,7 +3,7 @@ using RocksDb_Demo.Models;
 
 namespace RocksDb_Demo.Repositories.Memory;
 
-class InMemoryCharacterRepository : ICharacterRepository
+internal class InMemoryCharacterRepository : ICharacterRepository
 {
     private readonly ConcurrentDictionary<long, PlayerCharacter> _characters = new();
 
@@ -13,6 +13,13 @@ class InMemoryCharacterRepository : ICharacterRepository
             _characters[id] = character;
     }
 
-    public PlayerCharacter? GetCharacter(long id) =>
-        _characters.TryGetValue(id, out var character) ? character : null;
+    public PlayerCharacter? GetCharacter(long id)
+    {
+        return _characters.TryGetValue(id, out var character) ? character : null;
+    }
+
+    public void UpdateCharacter(PlayerCharacter character)
+    {
+        _characters[character.Id] = character;
+    }
 }

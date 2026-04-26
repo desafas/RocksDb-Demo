@@ -1,6 +1,6 @@
 namespace RocksDb_Demo.Storage;
 
-enum RocksDbMode
+internal enum RocksDbMode
 {
     DiskOnly,
     Cache512Mb,

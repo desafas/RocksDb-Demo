@@ -6,11 +6,11 @@ using RocksDbSharp;
 
 namespace RocksDb_Demo.Repositories.Disk.MemoryPack;
 
-class CachedRocksDbCharacterRepository : ICharacterRepository, IDisposable
+internal class CachedRocksDbCharacterRepository : ICharacterRepository, IDisposable
 {
-    private readonly RocksDb             _db;
+    private readonly RocksDb _db;
     private readonly ThreadLocal<byte[]> _keyBuffer = new(() => new byte[8]);
-    private readonly string              _label;
+    private readonly string _label;
 
     public CachedRocksDbCharacterRepository(RocksDbMode mode)
     {
@@ -18,9 +18,10 @@ class CachedRocksDbCharacterRepository : ICharacterRepository, IDisposable
             ? "RocksDB (MemoryPack - Cache 2GB)"
             : "RocksDB (MemoryPack - Cache 512MB)";
 
-        var dbPath = Path.Combine(AppContext.BaseDirectory, mode == RocksDbMode.Cache2Gb ? "rocksdb-cache-2gb" : "rocksdb-cache-512mb");
+        var dbPath = Path.Combine(AppContext.BaseDirectory,
+            mode == RocksDbMode.Cache2Gb ? "rocksdb-cache-2gb" : "rocksdb-cache-512mb");
         if (Directory.Exists(dbPath))
-            Directory.Delete(dbPath, recursive: true);
+            Directory.Delete(dbPath, true);
         Directory.CreateDirectory(dbPath);
         _db = RocksDb.Open(new RocksDbSettings { Mode = mode }.BuildDbOptions(), dbPath);
         Console.WriteLine($"{_label} ready at: {dbPath}");
@@ -46,6 +47,13 @@ class CachedRocksDbCharacterRepository : ICharacterRepository, IDisposable
         BinaryPrimitives.WriteInt64BigEndian(key, id);
         var value = _db.Get(key);
         return value is null ? null : MemoryPackSerializer.Deserialize<PlayerCharacter>(value);
+    }
+
+    public void UpdateCharacter(PlayerCharacter character)
+    {
+        var key = _keyBuffer.Value!;
+        BinaryPrimitives.WriteInt64BigEndian(key, character.Id);
+        _db.Put(key, MemoryPackSerializer.Serialize(character));
     }
 
     public void Dispose()
