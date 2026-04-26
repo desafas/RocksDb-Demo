@@ -39,7 +39,7 @@ internal static class BenchmarkSuiteExtensions
         ICharacterRepository[] repos, string[] labels, long count, ICharacterRepository[] warmableRepos,
         int[] threadCounts)
     {
-        WarmCaches(repos, warmableRepos, count);
+        WarmCaches(warmableRepos, count);
         Console.WriteLine("Running concurrent random read benchmarks...");
         var concurrentResults = new BenchmarkResult[threadCounts.Length][];
         for (var i = 0; i < threadCounts.Length; i++)
@@ -58,7 +58,7 @@ internal static class BenchmarkSuiteExtensions
         ICharacterRepository[] repos, string[] labels, long count, ICharacterRepository[] warmableRepos,
         PlayerCharacter[] writePool, int readerCount, int writerCount)
     {
-        WarmCaches(repos, warmableRepos, count);
+        WarmCaches(warmableRepos, count);
         Console.WriteLine("Running mixed read/write benchmarks...");
         var results = new List<BenchmarkResult>();
         foreach (var (repo, label) in repos.Zip(labels))
@@ -67,7 +67,25 @@ internal static class BenchmarkSuiteExtensions
         return [.. results];
     }
 
-    private static void WarmCaches(ICharacterRepository[] repos, ICharacterRepository[] warmableRepos, long count)
+    public static async Task<CompactionLatencyResult[]> RunCompactionLatency(
+        ICharacterRepository[] repos, string[] labels, PlayerCharacter[] writePool,
+        int readerCount, int writerCount)
+    {
+        Console.WriteLine("Running compaction latency benchmarks...");
+        var results = new List<CompactionLatencyResult>();
+        foreach (var (repo, label) in repos.Zip(labels))
+        {
+            var monitor = (ICompactionMonitorable)repo;
+            results.Add(await BenchmarkRunner.RunCompactionLatency(
+                repo, writePool, readerCount, writerCount,
+                () => monitor.IsFlushActive,
+                monitor.GetCfStats,
+                label));
+        }
+        return [.. results];
+    }
+
+    private static void WarmCaches(ICharacterRepository[] warmableRepos, long count)
     {
         Console.WriteLine("Warming caches...");
         foreach (var repo in warmableRepos)

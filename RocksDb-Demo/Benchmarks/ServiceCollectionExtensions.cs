@@ -49,6 +49,14 @@ internal static class ServiceCollectionExtensions
         return (allRepos, labels, warmableRepos);
     }
 
+    public static (ICharacterRepository[] Repos, string[] Labels) GetCompactionBenchmarkRepos(
+        this IServiceProvider provider)
+    {
+        var diskOnly = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-diskonly");
+        var cache2Gb = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-cache-2gb");
+        return ([diskOnly, cache2Gb], ["MemoryPack (4MB MemTable)", "MemoryPack (128MB MemTable)"]);
+    }
+
     public static (PlayerCharacter[] WritePool, long Count) GenerateAndInitialize(this ICharacterRepository[] repos)
     {
         Console.WriteLine("Generating 1,000,000 characters...");

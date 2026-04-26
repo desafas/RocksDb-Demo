@@ -128,7 +128,7 @@ internal static class BenchmarkRunner
         await Task.WhenAll(readerTasks);
         sw.Stop();
 
-        cts.Cancel();
+        await cts.CancelAsync();
         await Task.WhenAll(writerTasks);
 
         return new BenchmarkResult(label, totalReads, sw.Elapsed.TotalMilliseconds);
@@ -178,6 +178,177 @@ internal static class BenchmarkRunner
         }
 
         Console.WriteLine();
+    }
+
+    public static async Task<CompactionLatencyResult> RunCompactionLatency(
+        ICharacterRepository repo,
+        PlayerCharacter[] writePool,
+        int readerCount,
+        int writerCount,
+        Func<bool> isFlushActive,
+        Func<string?> getCfStats,
+        string label)
+    {
+#if DEBUG
+        Console.WriteLine(
+            "  WARNING: running in Debug mode — results will be skewed. Use 'dotnet run -c Release'.");
+#endif
+        var count = writePool.Length;
+
+        var readIds = Enumerable.Range(0, count).Select(i => (long)i).ToArray();
+        Random.Shared.Shuffle(readIds);
+
+        var shuffledPool = (PlayerCharacter[])writePool.Clone();
+        Random.Shared.Shuffle(shuffledPool);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        WindowsPageCacheFlusher.Flush();
+
+        Console.WriteLine($"  Running {label}...");
+
+        var cfStatsBefore = getCfStats();
+
+        var readLatencies = new long[count];
+        var writeLatencies = new long[count];
+
+        var wasFlushActive = false;
+        var flushCount = 0;
+        using var monitorCts = new CancellationTokenSource();
+
+        var monitorTask = Task.Run(async () =>
+        {
+            wasFlushActive = isFlushActive();
+
+            while (!monitorCts.Token.IsCancellationRequested)
+            {
+                var flushing = isFlushActive();
+
+                if (!flushing && wasFlushActive)
+                    Interlocked.Increment(ref flushCount);
+                wasFlushActive = flushing;
+
+                try { await Task.Delay(10, monitorCts.Token); }
+                catch (OperationCanceledException) { break; }
+            }
+        });
+
+        var readChunk = (int)Math.Ceiling((double)count / readerCount);
+        var writeChunk = (int)Math.Ceiling((double)count / writerCount);
+
+        var readerTaskArray = Enumerable.Range(0, readerCount).Select(t =>
+        {
+            var start = t * readChunk;
+            var length = (int)Math.Min(readChunk, count - start);
+            ReadOnlyMemory<long> chunk = new(readIds, start, length);
+            var offset = start;
+            return Task.Run(() =>
+            {
+                var span = chunk.Span;
+                for (var i = 0; i < span.Length; i++)
+                {
+                    var t0 = Stopwatch.GetTimestamp();
+                    repo.GetCharacter(span[i]);
+                    var t1 = Stopwatch.GetTimestamp();
+                    readLatencies[offset + i] = t1 - t0;
+                }
+            });
+        }).ToArray();
+
+        var writerTaskArray = Enumerable.Range(0, writerCount).Select(t =>
+        {
+            var start = t * writeChunk;
+            var length = (int)Math.Min(writeChunk, count - start);
+            ReadOnlyMemory<PlayerCharacter> chunk = new(shuffledPool, start, length);
+            var offset = start;
+            return Task.Run(() =>
+            {
+                var span = chunk.Span;
+                for (var i = 0; i < span.Length; i++)
+                {
+                    var t0 = Stopwatch.GetTimestamp();
+                    repo.UpdateCharacter(span[i]);
+                    var t1 = Stopwatch.GetTimestamp();
+                    writeLatencies[offset + i] = t1 - t0;
+                }
+            });
+        }).ToArray();
+
+        await Task.WhenAll(readerTaskArray.Concat(writerTaskArray));
+
+        await monitorCts.CancelAsync();
+        await monitorTask;
+
+        var cfStatsAfter = getCfStats();
+        var compactionCount = ParseSumCompCount(cfStatsAfter) - ParseSumCompCount(cfStatsBefore);
+
+        return new CompactionLatencyResult
+        {
+            Label = label,
+            FlushCount = flushCount,
+            CompactionCount = compactionCount,
+            Reads = new LatencyStats(readLatencies.ToList()),
+            Writes = new LatencyStats(writeLatencies.ToList()),
+        };
+    }
+
+    public static void PrintCompactionLatencyComparison(string title, CompactionLatencyResult[] results)
+    {
+        const int labelWidth = 26;
+        const int colWidth = 38;
+
+        Console.WriteLine();
+        Console.WriteLine($"=== {title} ===");
+        Console.WriteLine();
+
+        var header = "".PadRight(labelWidth) + string.Concat(results.Select(r => r.Label.PadLeft(colWidth)));
+        Console.WriteLine(header);
+        Console.WriteLine(new string('-', labelWidth + colWidth * results.Length));
+
+        PrintCompRow("Flushes", labelWidth, colWidth, results, r => $"{r.FlushCount}");
+        PrintCompRow("Compactions", labelWidth, colWidth, results, r => $"{r.CompactionCount}");
+
+        Console.WriteLine();
+        Console.WriteLine("READ LATENCY");
+        PrintCompRow("  p50", labelWidth, colWidth, results, r => Fmt(r.Reads.P50Ms));
+        PrintCompRow("  p95", labelWidth, colWidth, results, r => Fmt(r.Reads.P95Ms));
+        PrintCompRow("  p99", labelWidth, colWidth, results, r => Fmt(r.Reads.P99Ms));
+        PrintCompRow("  p999", labelWidth, colWidth, results, r => Fmt(r.Reads.P999Ms));
+
+        Console.WriteLine();
+        Console.WriteLine("WRITE LATENCY");
+        PrintCompRow("  p50", labelWidth, colWidth, results, r => Fmt(r.Writes.P50Ms));
+        PrintCompRow("  p95", labelWidth, colWidth, results, r => Fmt(r.Writes.P95Ms));
+        PrintCompRow("  p99", labelWidth, colWidth, results, r => Fmt(r.Writes.P99Ms));
+        PrintCompRow("  p999", labelWidth, colWidth, results, r => Fmt(r.Writes.P999Ms));
+
+        Console.WriteLine();
+    }
+
+    private static string Fmt(double ms) => $"{ms:F3} ms";
+
+    private static void PrintCompRow(string name, int labelWidth, int colWidth,
+        CompactionLatencyResult[] results, Func<CompactionLatencyResult, string> valueSelector)
+    {
+        var row = name.PadRight(labelWidth) + string.Concat(results.Select(r => valueSelector(r).PadLeft(colWidth)));
+        Console.WriteLine(row);
+    }
+
+    private static int ParseSumCompCount(string? cfstats)
+    {
+        if (cfstats is null) return 0;
+        foreach (var line in cfstats.Split('\n'))
+        {
+            var trimmed = line.TrimStart();
+            if (!trimmed.StartsWith("Sum ") && !trimmed.StartsWith("Sum\t")) continue;
+            var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            // Row format: Sum Files(X/Y) Size Unit Score Read Rn Rnp1 Write Wnew Moved W-Amp Rd Wr Comp(sec) CompMergeCPU(sec) Comp(cnt)
+            // Index 16 = Comp(cnt)
+            if (parts.Length > 16 && int.TryParse(parts[16], out var count))
+                return count;
+        }
+        return 0;
     }
 
     private static long[] BuildIds(long count, bool randomize)

@@ -10,6 +10,7 @@ await using var provider = new ServiceCollection()
     .BuildServiceProvider();
 
 var (allRepos, labels, warmableRepos) = provider.GetCharacterRepositories();
+var (compactionRepos, compactionLabels) = provider.GetCompactionBenchmarkRepos();
 var (writePool, count) = allRepos.GenerateAndInitialize();
 
 int[] threadCounts = [4, 16, 32, 64];
@@ -19,13 +20,18 @@ const int WriterCount = 4;
 var sequential = BenchmarkSuiteExtensions.RunSequential(allRepos, labels, count, warmableRepos);
 var random = BenchmarkSuiteExtensions.RunRandom(allRepos, labels, count, warmableRepos);
 var concurrent = await BenchmarkSuiteExtensions.RunConcurrent(allRepos, labels, count, warmableRepos, threadCounts);
-var mixed = await BenchmarkSuiteExtensions.RunMixed(allRepos, labels, count, warmableRepos, writePool, ReaderCount,
-    WriterCount);
+var mixed = await BenchmarkSuiteExtensions.RunMixed(allRepos, labels, count, warmableRepos, writePool, ReaderCount, WriterCount);
+var compaction = await BenchmarkSuiteExtensions.RunCompactionLatency(compactionRepos, compactionLabels, writePool, ReaderCount, WriterCount);
 
 BenchmarkRunner.PrintComparison("Sequential Read Benchmark", sequential);
 BenchmarkRunner.PrintComparison("Random Read Benchmark", random);
 BenchmarkRunner.PrintConcurrentComparison("Concurrent Random Read Benchmark", threadCounts, concurrent);
 BenchmarkRunner.PrintComparison($"Mixed Read/Write Benchmark ({ReaderCount} readers, {WriterCount} writers)", mixed);
+BenchmarkRunner.PrintCompactionLatencyComparison($"Compaction Latency Benchmark ({count:N0} reads · {count:N0} writes)", compaction);
 
 Console.WriteLine("Press any key to exit...");
 Console.ReadKey();
+
+
+
+

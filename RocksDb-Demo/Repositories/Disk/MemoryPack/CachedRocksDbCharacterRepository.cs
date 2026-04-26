@@ -6,7 +6,7 @@ using RocksDbSharp;
 
 namespace RocksDb_Demo.Repositories.Disk.MemoryPack;
 
-internal class CachedRocksDbCharacterRepository : ICharacterRepository, IDisposable
+internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompactionMonitorable, IDisposable
 {
     private readonly RocksDb _db;
     private readonly ThreadLocal<byte[]> _keyBuffer = new(() => new byte[8]);
@@ -55,6 +55,11 @@ internal class CachedRocksDbCharacterRepository : ICharacterRepository, IDisposa
         BinaryPrimitives.WriteInt64BigEndian(key, character.Id);
         _db.Put(key, MemoryPackSerializer.Serialize(character));
     }
+
+    public bool IsFlushActive =>
+        _db.GetProperty("rocksdb.num-running-flushes") is string s && s != "0";
+
+    public string? GetCfStats() => _db.GetProperty("rocksdb.cfstats");
 
     public void Dispose()
     {

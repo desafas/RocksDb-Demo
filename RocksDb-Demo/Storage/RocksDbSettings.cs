@@ -15,7 +15,7 @@ internal class RocksDbSettings
             var tableOptions = new BlockBasedTableOptions().SetNoBlockCache(true);
             dbOptions
                 .SetWriteBufferSize(4 * 1024 * 1024) // 4MB — minimum MemTable
-                .SetMaxWriteBufferNumber(1)
+                .SetMaxWriteBufferNumber(2)
                 .SetBlockBasedTableFactory(tableOptions);
         }
         else
