@@ -59,25 +59,18 @@ internal static class CharacterGenerator
         .RuleFor(c => c.KnownSkills, f => Enumerable.Range(0, 30).Select(_ => f.Random.Int(1, 5_000)).ToArray())
         .RuleFor(c => c.AchievementFlags, f => f.Random.Bytes(64));
 
-    public static Dictionary<long, PlayerCharacter> GenerateOneMillionCharacters()
+    public static PlayerCharacter[] GenerateCharacters(int count)
     {
-        const int count = 1_000_000;
-        var characters = new Dictionary<long, PlayerCharacter>(count);
+        var characters = new PlayerCharacter[count];
 
         for (var i = 0; i < count; i++)
         {
-            var character = GenerateCharacter();
-            characters[character.Id] = character;
+            characters[i] = _faker.Generate();
 
             if ((i + 1) % 100_000 == 0)
                 Console.WriteLine($"  {i + 1:N0} / {count:N0}");
         }
 
         return characters;
-    }
-
-    private static PlayerCharacter GenerateCharacter()
-    {
-        return _faker.Generate();
     }
 }

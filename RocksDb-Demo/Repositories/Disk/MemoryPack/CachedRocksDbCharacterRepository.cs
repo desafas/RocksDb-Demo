@@ -8,23 +8,23 @@ namespace RocksDb_Demo.Repositories.Disk.MemoryPack;
 
 internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompactionMonitorable, IDisposable
 {
-    private readonly RocksDb _db;
+    private readonly RocksDbMode _mode;
+    private readonly string _dbPath;
     private readonly ThreadLocal<byte[]> _keyBuffer = new(() => new byte[8]);
     private readonly string _label;
+    private RocksDb _db = null!;
 
     public CachedRocksDbCharacterRepository(RocksDbMode mode)
     {
+        _mode = mode;
         _label = mode == RocksDbMode.Cache2Gb
             ? "RocksDB (MemoryPack - Cache 2GB)"
             : "RocksDB (MemoryPack - Cache 512MB)";
 
-        var dbPath = Path.Combine(AppContext.BaseDirectory,
+        _dbPath = Path.Combine(AppContext.BaseDirectory,
             mode == RocksDbMode.Cache2Gb ? "rocksdb-cache-2gb" : "rocksdb-cache-512mb");
-        if (Directory.Exists(dbPath))
-            Directory.Delete(dbPath, true);
-        Directory.CreateDirectory(dbPath);
-        _db = RocksDb.Open(new RocksDbSettings { Mode = mode }.BuildDbOptions(), dbPath);
-        Console.WriteLine($"{_label} ready at: {dbPath}");
+        OpenFresh();
+        Console.WriteLine($"{_label} ready at: {_dbPath}");
     }
 
     public void Initialize(Dictionary<long, PlayerCharacter> characters)
@@ -39,6 +39,7 @@ internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompact
         }
 
         _db.Write(batch);
+        _db.Settle();
     }
 
     public PlayerCharacter? GetCharacter(long id)
@@ -56,10 +57,37 @@ internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompact
         _db.Put(key, MemoryPackSerializer.Serialize(character));
     }
 
+    public void WriteBatch(ReadOnlyMemory<PlayerCharacter> batch)
+    {
+        var span = batch.Span;
+        var key = _keyBuffer.Value!;
+        using var wb = new WriteBatch();
+        foreach (var t in span)
+        {
+            BinaryPrimitives.WriteInt64BigEndian(key, t.Id);
+            wb.Put(key, MemoryPackSerializer.Serialize(t));
+        }
+        _db.Write(wb);
+    }
+
+    public void Truncate()
+    {
+        _db.Dispose();
+        OpenFresh();
+    }
+
     public bool IsFlushActive =>
         _db.GetProperty("rocksdb.num-running-flushes") is string s && s != "0";
 
     public string? GetCfStats() => _db.GetProperty("rocksdb.cfstats");
+
+    private void OpenFresh()
+    {
+        if (Directory.Exists(_dbPath))
+            Directory.Delete(_dbPath, true);
+        Directory.CreateDirectory(_dbPath);
+        _db = RocksDb.Open(new RocksDbSettings { Mode = _mode }.BuildDbOptions(), _dbPath);
+    }
 
     public void Dispose()
     {

@@ -22,4 +22,16 @@ internal class InMemoryCharacterRepository : ICharacterRepository
     {
         _characters[character.Id] = character;
     }
+
+    public void WriteBatch(ReadOnlyMemory<PlayerCharacter> batch)
+    {
+        var span = batch.Span;
+        for (var i = 0; i < span.Length; i++)
+            _characters[span[i].Id] = span[i];
+    }
+
+    public void Truncate()
+    {
+        _characters.Clear();
+    }
 }

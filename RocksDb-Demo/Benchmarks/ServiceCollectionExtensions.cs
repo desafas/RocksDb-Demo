@@ -57,22 +57,32 @@ internal static class ServiceCollectionExtensions
         return ([diskOnly, cache2Gb], ["MemoryPack (4MB MemTable)", "MemoryPack (128MB MemTable)"]);
     }
 
+    public static (ICharacterRepository[] Repos, string[] Labels) GetWriteBenchmarkRepos(
+        this IServiceProvider provider)
+    {
+        var memPackDiskOnly = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-diskonly");
+        var cache2Gb = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-cache-2gb");
+        return ([memPackDiskOnly, cache2Gb], ["MemoryPack (4MB MemTable)", "MemoryPack (128MB MemTable)"]);
+    }
+
     public static (PlayerCharacter[] WritePool, long Count) GenerateAndInitialize(this ICharacterRepository[] repos)
     {
-        Console.WriteLine("Generating 1,000,000 characters...");
-        var characters = CharacterGenerator.GenerateOneMillionCharacters();
+        const int count = 1_000_000;
+        Console.WriteLine($"Generating {count:N0} characters...");
+        var writePool = CharacterGenerator.GenerateCharacters(count);
+        var charactersById = writePool.ToDictionary(c => c.Id);
         var memoryUsed = GC.GetTotalMemory(true);
         Console.WriteLine();
-        Console.WriteLine($"Done. {characters.Count:N0} characters loaded.");
+        Console.WriteLine($"Done. {charactersById.Count:N0} characters loaded.");
         Console.WriteLine(
             $"Memory used   : {memoryUsed / 1024.0 / 1024.0:F1} MB  ({memoryUsed / 1024.0 / 1024.0 / 1024.0:F3} GB)");
         Console.WriteLine();
 
         foreach (var repo in repos)
-            repo.Initialize(characters);
+            repo.Initialize(charactersById);
         Console.WriteLine("Repositories ready.");
         Console.WriteLine();
 
-        return (characters.Values.ToArray(), characters.Count);
+        return (writePool, charactersById.Count);
     }
 }

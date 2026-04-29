@@ -85,6 +85,52 @@ internal static class BenchmarkSuiteExtensions
         return [.. results];
     }
 
+    public static async Task<WriteBenchmarkResult[][]> RunWriteUpdate(
+        ICharacterRepository[] repos, string[] labels,
+        Dictionary<long, PlayerCharacter> baseCharacters,
+        PlayerCharacter[] updatePool,
+        int[] batchSizes, int threadCount)
+    {
+        Console.WriteLine("Running update write benchmarks...");
+        var results = new WriteBenchmarkResult[batchSizes.Length][];
+        for (var b = 0; b < batchSizes.Length; b++)
+        {
+            results[b] = new WriteBenchmarkResult[repos.Length];
+            for (var r = 0; r < repos.Length; r++)
+            {
+                var repo = repos[r];
+                repo.Truncate();
+                repo.Initialize(baseCharacters);
+                results[b][r] = await BenchmarkRunner.RunBatchedWrites(
+                    repo, updatePool, batchSizes[b], threadCount, labels[r]);
+            }
+        }
+        return results;
+    }
+
+    public static async Task<WriteBenchmarkResult[][]> RunWriteInsert(
+        ICharacterRepository[] repos, string[] labels,
+        Dictionary<long, PlayerCharacter> baseCharacters,
+        PlayerCharacter[] insertPool,
+        int[] batchSizes, int threadCount)
+    {
+        Console.WriteLine("Running insert write benchmarks...");
+        var results = new WriteBenchmarkResult[batchSizes.Length][];
+        for (var b = 0; b < batchSizes.Length; b++)
+        {
+            results[b] = new WriteBenchmarkResult[repos.Length];
+            for (var r = 0; r < repos.Length; r++)
+            {
+                var repo = repos[r];
+                repo.Truncate();
+                repo.Initialize(baseCharacters);
+                results[b][r] = await BenchmarkRunner.RunBatchedWrites(
+                    repo, insertPool, batchSizes[b], threadCount, labels[r]);
+            }
+        }
+        return results;
+    }
+
     private static void WarmCaches(ICharacterRepository[] warmableRepos, long count)
     {
         Console.WriteLine("Warming caches...");

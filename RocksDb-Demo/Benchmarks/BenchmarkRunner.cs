@@ -109,7 +109,7 @@ internal static class BenchmarkRunner
                 var character = writePool[Random.Shared.Next(writePool.Length)];
                 repo.UpdateCharacter(character);
             }
-        }));
+        })).ToArray();
 
         var sw = Stopwatch.StartNew();
 
@@ -349,6 +349,116 @@ internal static class BenchmarkRunner
                 return count;
         }
         return 0;
+    }
+
+    public static async Task<WriteBenchmarkResult> RunBatchedWrites(
+        ICharacterRepository repo,
+        PlayerCharacter[] writePool,
+        int batchSize,
+        int threadCount,
+        string label)
+    {
+#if DEBUG
+        Console.WriteLine(
+            "  WARNING: running in Debug mode — results will be skewed. Use 'dotnet run -c Release'.");
+#endif
+        var count = writePool.Length;
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        WindowsPageCacheFlusher.Flush();
+
+        Console.WriteLine($"  Running {label} (batch={batchSize}, {threadCount} threads)...");
+
+        var chunkSize = (int)Math.Ceiling((double)count / threadCount);
+        var latencies = batchSize == 1 ? new long[count] : null;
+
+        var sw = Stopwatch.StartNew();
+
+        var tasks = Enumerable.Range(0, threadCount).Select(t =>
+        {
+            var start = t * chunkSize;
+            var length = (int)Math.Min(chunkSize, count - start);
+            return Task.Run(() =>
+            {
+                if (batchSize == 1)
+                {
+                    for (var i = 0; i < length; i++)
+                    {
+                        var t0 = Stopwatch.GetTimestamp();
+                        repo.UpdateCharacter(writePool[start + i]);
+                        var t1 = Stopwatch.GetTimestamp();
+                        latencies![start + i] = t1 - t0;
+                    }
+                }
+                else
+                {
+                    for (var i = 0; i < length; i += batchSize)
+                    {
+                        var size = Math.Min(batchSize, length - i);
+                        repo.WriteBatch(new ReadOnlyMemory<PlayerCharacter>(writePool, start + i, size));
+                    }
+                }
+            });
+        });
+
+        await Task.WhenAll(tasks);
+        sw.Stop();
+
+        return new WriteBenchmarkResult
+        {
+            Label = label,
+            Count = count,
+            BatchSize = batchSize,
+            TotalMs = sw.Elapsed.TotalMilliseconds,
+            Latency = latencies is null ? LatencyStats.Empty : new LatencyStats([.. latencies]),
+        };
+    }
+
+    public static void PrintWriteComparison(string title, int[] batchSizes, WriteBenchmarkResult[][] resultsByBatchSize)
+    {
+        const int labelWidth = 20;
+        const int colWidth = 38;
+
+        var repoLabels = resultsByBatchSize[0].Select(r => r.Label).ToArray();
+        var totalWidth = labelWidth + colWidth * repoLabels.Length;
+
+        Console.WriteLine();
+        Console.WriteLine($"=== {title} ({resultsByBatchSize[0][0].Count:N0} ops) ===");
+        Console.WriteLine();
+
+        var header = "".PadRight(labelWidth) + string.Concat(repoLabels.Select(l => l.PadLeft(colWidth)));
+        Console.WriteLine(header);
+        Console.WriteLine(new string('=', totalWidth));
+
+        Console.WriteLine("Throughput".PadRight(totalWidth, '-'));
+        for (var i = 0; i < batchSizes.Length; i++)
+        {
+            PrintWriteRow($"  batch {batchSizes[i]:N0}", labelWidth, colWidth, resultsByBatchSize[i],
+                r => $"{r.WritesPerSecond:N0} writes/sec");
+        }
+
+        var batchOneIndex = Array.IndexOf(batchSizes, 1);
+        if (batchOneIndex >= 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Per-Op Latency (batch=1)".PadRight(totalWidth, '-'));
+            var oneRes = resultsByBatchSize[batchOneIndex];
+            PrintWriteRow("  p50", labelWidth, colWidth, oneRes, r => $"{r.Latency.P50Ms:F3} ms");
+            PrintWriteRow("  p95", labelWidth, colWidth, oneRes, r => $"{r.Latency.P95Ms:F3} ms");
+            PrintWriteRow("  p99", labelWidth, colWidth, oneRes, r => $"{r.Latency.P99Ms:F3} ms");
+            PrintWriteRow("  p999", labelWidth, colWidth, oneRes, r => $"{r.Latency.P999Ms:F3} ms");
+        }
+
+        Console.WriteLine();
+    }
+
+    private static void PrintWriteRow(string name, int labelWidth, int colWidth,
+        WriteBenchmarkResult[] results, Func<WriteBenchmarkResult, string> valueSelector)
+    {
+        var row = name.PadRight(labelWidth) + string.Concat(results.Select(r => valueSelector(r).PadLeft(colWidth)));
+        Console.WriteLine(row);
     }
 
     private static long[] BuildIds(long count, bool randomize)

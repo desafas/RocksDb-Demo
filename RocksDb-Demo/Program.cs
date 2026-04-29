@@ -1,6 +1,8 @@
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using RocksDb_Demo.Benchmarks;
+using RocksDb_Demo.Generators;
+using RocksDb_Demo.Models;
 
 Console.OutputEncoding = Encoding.UTF8;
 Console.WriteLine();
@@ -11,11 +13,14 @@ await using var provider = new ServiceCollection()
 
 var (allRepos, labels, warmableRepos) = provider.GetCharacterRepositories();
 var (compactionRepos, compactionLabels) = provider.GetCompactionBenchmarkRepos();
+var (writeRepos, writeLabels) = provider.GetWriteBenchmarkRepos();
 var (writePool, count) = allRepos.GenerateAndInitialize();
 
 int[] threadCounts = [4, 16, 32, 64];
 const int ReaderCount = 4;
 const int WriterCount = 4;
+const int WriteThreadCount = 16;
+int[] batchSizes = [1, 1_000, 10_000];
 
 var sequential = BenchmarkSuiteExtensions.RunSequential(allRepos, labels, count, warmableRepos);
 var random = BenchmarkSuiteExtensions.RunRandom(allRepos, labels, count, warmableRepos);
@@ -23,15 +28,30 @@ var concurrent = await BenchmarkSuiteExtensions.RunConcurrent(allRepos, labels, 
 var mixed = await BenchmarkSuiteExtensions.RunMixed(allRepos, labels, count, warmableRepos, writePool, ReaderCount, WriterCount);
 var compaction = await BenchmarkSuiteExtensions.RunCompactionLatency(compactionRepos, compactionLabels, writePool, ReaderCount, WriterCount);
 
+// Build the write pools.
+// Update pool: shuffled clone of the existing 1M characters — each existing key written exactly once.
+var baseCharacters = writePool.ToDictionary(c => c.Id);
+var updatePool = (PlayerCharacter[])writePool.Clone();
+Random.Shared.Shuffle(updatePool);
+
+// Insert pool: 1M new characters with continuing IDs (1M..2M), shuffled.
+Console.WriteLine($"Generating {count:N0} additional characters for insert benchmark...");
+var insertPool = CharacterGenerator.GenerateCharacters((int)count);
+Random.Shared.Shuffle(insertPool);
+Console.WriteLine();
+
+var updateWrites = await BenchmarkSuiteExtensions.RunWriteUpdate(
+    writeRepos, writeLabels, baseCharacters, updatePool, batchSizes, WriteThreadCount);
+var insertWrites = await BenchmarkSuiteExtensions.RunWriteInsert(
+    writeRepos, writeLabels, baseCharacters, insertPool, batchSizes, WriteThreadCount);
+
 BenchmarkRunner.PrintComparison("Sequential Read Benchmark", sequential);
 BenchmarkRunner.PrintComparison("Random Read Benchmark", random);
 BenchmarkRunner.PrintConcurrentComparison("Concurrent Random Read Benchmark", threadCounts, concurrent);
 BenchmarkRunner.PrintComparison($"Mixed Read/Write Benchmark ({ReaderCount} readers, {WriterCount} writers)", mixed);
 BenchmarkRunner.PrintCompactionLatencyComparison($"Compaction Latency Benchmark ({count:N0} reads · {count:N0} writes)", compaction);
+BenchmarkRunner.PrintWriteComparison($"Update Write Benchmark ({WriteThreadCount} threads)", batchSizes, updateWrites);
+BenchmarkRunner.PrintWriteComparison($"Insert Write Benchmark ({WriteThreadCount} threads)", batchSizes, insertWrites);
 
 Console.WriteLine("Press any key to exit...");
 Console.ReadKey();
-
-
-
-
