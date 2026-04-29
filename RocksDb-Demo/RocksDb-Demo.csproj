@@ -17,4 +17,9 @@
         <PackageReference Include="RocksDbSharp" Version="6.2.2"/>
     </ItemGroup>
 
+    <PropertyGroup>
+        <RunCommand>cmd</RunCommand>
+        <RunArguments>/c docker build -t rocksdb-demo . &amp;&amp; docker run --rm --privileged rocksdb-demo</RunArguments>
+    </PropertyGroup>
+
 </Project>

@@ -21,7 +21,7 @@ internal static class BenchmarkRunner
         GC.Collect();
 
         if (!isWarmup)
-            WindowsPageCacheFlusher.Flush();
+            PageCacheFlusher.Flush();
 
         if (!isWarmup)
             Console.WriteLine($"  Running {label}...");
@@ -50,7 +50,7 @@ internal static class BenchmarkRunner
         GC.Collect();
 
         if (!isWarmup)
-            WindowsPageCacheFlusher.Flush();
+            PageCacheFlusher.Flush();
 
         if (!isWarmup)
             Console.WriteLine($"  Running {label} ({threadCount} thread{(threadCount == 1 ? "" : "s")})...");
@@ -92,7 +92,7 @@ internal static class BenchmarkRunner
         GC.Collect();
 
         if (!isWarmup)
-            WindowsPageCacheFlusher.Flush();
+            PageCacheFlusher.Flush();
 
         if (!isWarmup)
             Console.WriteLine(
@@ -204,7 +204,7 @@ internal static class BenchmarkRunner
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        WindowsPageCacheFlusher.Flush();
+        PageCacheFlusher.Flush();
 
         Console.WriteLine($"  Running {label}...");
 
@@ -367,7 +367,7 @@ internal static class BenchmarkRunner
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
-        WindowsPageCacheFlusher.Flush();
+        PageCacheFlusher.Flush();
 
         Console.WriteLine($"  Running {label} (batch={batchSize}, {threadCount} threads)...");
 

@@ -53,5 +53,8 @@ BenchmarkRunner.PrintCompactionLatencyComparison($"Compaction Latency Benchmark 
 BenchmarkRunner.PrintWriteComparison($"Update Write Benchmark ({WriteThreadCount} threads)", batchSizes, updateWrites);
 BenchmarkRunner.PrintWriteComparison($"Insert Write Benchmark ({WriteThreadCount} threads)", batchSizes, insertWrites);
 
-Console.WriteLine("Press any key to exit...");
-Console.ReadKey();
+if (!Console.IsInputRedirected)
+{
+    Console.WriteLine("Press any key to exit...");
+    Console.ReadKey();
+}
