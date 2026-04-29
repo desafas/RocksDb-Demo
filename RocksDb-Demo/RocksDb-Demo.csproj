@@ -19,7 +19,7 @@
 
     <PropertyGroup>
         <RunCommand>cmd</RunCommand>
-        <RunArguments>/c docker build -t rocksdb-demo . &amp;&amp; docker run --rm --privileged rocksdb-demo</RunArguments>
+        <RunArguments>/c docker build -t rocksdb-demo . &amp;&amp; docker run --rm --privileged -i rocksdb-demo</RunArguments>
     </PropertyGroup>
 
 </Project>

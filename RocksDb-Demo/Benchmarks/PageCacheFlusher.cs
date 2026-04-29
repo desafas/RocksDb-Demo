@@ -2,11 +2,13 @@ namespace RocksDb_Demo.Benchmarks;
 
 internal static class PageCacheFlusher
 {
+    public static bool Enabled { get; set; }
+
     private static bool? _available;
 
     public static void Flush()
     {
-        if (_available == false)
+        if (!Enabled || _available == false)
             return;
 
         try
@@ -19,7 +21,7 @@ internal static class PageCacheFlusher
             _available = false;
             Console.WriteLine(
                 $"  WARNING: page cache flush failed ({ex.Message}). " +
-                "Run the container with --cap-add SYS_ADMIN.");
+                "Run the container with --privileged.");
         }
     }
 }

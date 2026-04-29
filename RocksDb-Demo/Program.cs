@@ -3,8 +3,22 @@ using Microsoft.Extensions.DependencyInjection;
 using RocksDb_Demo.Benchmarks;
 using RocksDb_Demo.Generators;
 using RocksDb_Demo.Models;
+using RocksDb_Demo.Storage;
 
 Console.OutputEncoding = Encoding.UTF8;
+Console.WriteLine();
+
+Console.WriteLine("Benchmark mode:");
+Console.WriteLine("  1. Steady-state: no settle, no flush — OS cache warms naturally, compactions may be in flight [default]");
+Console.WriteLine("  2. Cold-isolated: settle + flush — DB fully compacted and OS cache cleared before each benchmark");
+Console.Write("Enter choice (1/2): ");
+var modeInput = Console.ReadLine()?.Trim();
+var coldIsolated = modeInput == "2";
+RocksDbExtensions.SettleEnabled = coldIsolated;
+PageCacheFlusher.Enabled = coldIsolated;
+Console.WriteLine(coldIsolated
+    ? "Cold-isolated — each benchmark starts with a fully compacted DB and cold OS cache. Measures worst-case cold-disk performance."
+    : "Steady-state — DB is not settled and OS cache is not flushed. Measures realistic production behavior.");
 Console.WriteLine();
 
 await using var provider = new ServiceCollection()
