@@ -18,6 +18,13 @@ internal class InMemoryCharacterRepository : ICharacterRepository
         return _characters.TryGetValue(id, out var character) ? character : null;
     }
 
+    public void GetCharacters(ReadOnlyMemory<long> ids)
+    {
+        var span = ids.Span;
+        for (var i = 0; i < span.Length; i++)
+            GetCharacter(span[i]);
+    }
+
     public void UpdateCharacter(PlayerCharacter character)
     {
         _characters[character.Id] = character;

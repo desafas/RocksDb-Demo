@@ -134,6 +134,38 @@ internal static class BenchmarkRunner
         return new BenchmarkResult(label, totalReads, sw.Elapsed.TotalMilliseconds);
     }
 
+    public static BenchmarkResult RunBulkRead(ICharacterRepository repo, long count, int batchSize, string label,
+        bool isWarmup = false)
+    {
+#if DEBUG
+        if (!isWarmup)
+            Console.WriteLine(
+                "  WARNING: running in Debug mode — results will be skewed. Use 'dotnet run -c Release'.");
+#endif
+        var ids = BuildIds(count, true);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        if (!isWarmup)
+            PageCacheFlusher.Flush();
+
+        if (!isWarmup)
+            Console.WriteLine($"  Running {label} (batch={batchSize:N0})...");
+
+        var sw = Stopwatch.StartNew();
+
+        for (var i = 0; i < ids.Length; i += batchSize)
+        {
+            var size = Math.Min(batchSize, ids.Length - i);
+            repo.GetCharacters(new ReadOnlyMemory<long>(ids, i, size));
+        }
+
+        sw.Stop();
+        return new BenchmarkResult(label, count, sw.Elapsed.TotalMilliseconds);
+    }
+
     public static void PrintComparison(string title, params BenchmarkResult[] results)
     {
         const int labelWidth = 18;

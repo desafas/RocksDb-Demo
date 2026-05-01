@@ -5,16 +5,16 @@ namespace RocksDb_Demo.Benchmarks;
 
 internal static class BenchmarkSuiteExtensions
 {
-    public static BenchmarkResult[] RunSequential(
-        ICharacterRepository[] repos, string[] labels, long count, ICharacterRepository[] warmableRepos)
+    public static BenchmarkResult[] RunBulkRead(
+        ICharacterRepository[] repos, string[] labels, long count, ICharacterRepository[] warmableRepos, int batchSize)
     {
-        Console.WriteLine("Running sequential benchmarks...");
+        Console.WriteLine($"Running bulk read benchmarks (batch={batchSize:N0})...");
         var results = new List<BenchmarkResult>();
         foreach (var (repo, label) in repos.Zip(labels))
         {
             if (warmableRepos.Contains(repo))
-                BenchmarkRunner.Run(repo, count, label, isWarmup: true);
-            results.Add(BenchmarkRunner.Run(repo, count, label));
+                BenchmarkRunner.RunBulkRead(repo, count, batchSize, label, isWarmup: true);
+            results.Add(BenchmarkRunner.RunBulkRead(repo, count, batchSize, label));
         }
 
         return [.. results];

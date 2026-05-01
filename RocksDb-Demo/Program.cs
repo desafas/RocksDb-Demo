@@ -34,10 +34,11 @@ int[] threadCounts = [4, 16, 32, 64];
 const int ReaderCount = 4;
 const int WriterCount = 4;
 const int WriteThreadCount = 16;
+const int BulkReadBatchSize = 5_000;
 int[] batchSizes = [1, 1_000, 10_000];
 
-var sequential = BenchmarkSuiteExtensions.RunSequential(allRepos, labels, count, warmableRepos);
 var random = BenchmarkSuiteExtensions.RunRandom(allRepos, labels, count, warmableRepos);
+var bulkRead = BenchmarkSuiteExtensions.RunBulkRead(allRepos, labels, count, warmableRepos, BulkReadBatchSize);
 var concurrent = await BenchmarkSuiteExtensions.RunConcurrent(allRepos, labels, count, warmableRepos, threadCounts);
 var mixed = await BenchmarkSuiteExtensions.RunMixed(allRepos, labels, count, warmableRepos, writePool, ReaderCount, WriterCount);
 var compaction = await BenchmarkSuiteExtensions.RunCompactionLatency(compactionRepos, compactionLabels, writePool, ReaderCount, WriterCount);
@@ -59,8 +60,8 @@ var updateWrites = await BenchmarkSuiteExtensions.RunWriteUpdate(
 var insertWrites = await BenchmarkSuiteExtensions.RunWriteInsert(
     writeRepos, writeLabels, baseCharacters, insertPool, batchSizes, WriteThreadCount);
 
-BenchmarkRunner.PrintComparison("Sequential Read Benchmark", sequential);
 BenchmarkRunner.PrintComparison("Random Read Benchmark", random);
+BenchmarkRunner.PrintComparison($"Bulk Read Benchmark (batch={BulkReadBatchSize:N0})", bulkRead);
 BenchmarkRunner.PrintConcurrentComparison("Concurrent Random Read Benchmark", threadCounts, concurrent);
 BenchmarkRunner.PrintComparison($"Mixed Read/Write Benchmark ({ReaderCount} readers, {WriterCount} writers)", mixed);
 BenchmarkRunner.PrintCompactionLatencyComparison($"Compaction Latency Benchmark ({count:N0} reads · {count:N0} writes)", compaction);

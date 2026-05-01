@@ -42,6 +42,22 @@ internal class DiskOnlyRocksDbCharacterRepository : ICharacterRepository, ICompa
         return value is null ? null : MemoryPackSerializer.Deserialize<PlayerCharacter>(value);
     }
 
+    public void GetCharacters(ReadOnlyMemory<long> ids)
+    {
+        var span = ids.Span;
+        var keys = new byte[span.Length][];
+        for (var i = 0; i < span.Length; i++)
+        {
+            var k = new byte[8];
+            BinaryPrimitives.WriteInt64BigEndian(k, span[i]);
+            keys[i] = k;
+        }
+        var results = _db.MultiGet(keys, null, null);
+        foreach (var kv in results)
+            if (kv.Value is not null)
+                MemoryPackSerializer.Deserialize<PlayerCharacter>(kv.Value);
+    }
+
     public void UpdateCharacter(PlayerCharacter character)
     {
         var key = _keyBuffer.Value!;
