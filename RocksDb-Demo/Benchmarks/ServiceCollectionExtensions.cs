@@ -11,40 +11,51 @@ namespace RocksDb_Demo.Benchmarks;
 
 internal static class ServiceCollectionExtensions
 {
-    public const string LabelInMemory = "InMemory";
-    public const string LabelMsgPack = "RocksDB (MsgPack - DiskOnly)";
-    public const string LabelMemPack = "RocksDB (MemoryPack - DiskOnly)";
-    public const string LabelCache512Mb = "RocksDB (MemoryPack - Cache 512MB)";
-    public const string LabelCache2Gb = "RocksDB (MemoryPack - Cache 2GB)";
+    public const string LabelInMemory      = "InMemory";
+    public const string LabelMsgPackDisk   = "MsgPack-Disk";
+    public const string LabelMemPackDisk   = "MemPack-Disk";
+    public const string LabelMsgPack512Mb  = "MsgPack-512MB";
+    public const string LabelMemPack512Mb  = "MemPack-512MB";
+    public const string LabelMsgPack2Gb    = "MsgPack-2GB";
+    public const string LabelMemPack2Gb    = "MemPack-2GB";
 
     public static IServiceCollection AddCharacterRepositories(this IServiceCollection services)
     {
         return services
             .AddKeyedSingleton<ICharacterRepository, InMemoryCharacterRepository>("inmemory")
-            .AddKeyedSingleton<ICharacterRepository, MsgPackDiskOnlyRocksDbCharacterRepository>(
-                "rocksdb-msgpack-diskonly")
+            .AddKeyedSingleton<ICharacterRepository, MsgPackDiskOnlyRocksDbCharacterRepository>("rocksdb-msgpack-diskonly")
             .AddKeyedSingleton<ICharacterRepository, DiskOnlyRocksDbCharacterRepository>("rocksdb-diskonly")
             .AddKeyedSingleton<ICharacterRepository>(
-                "rocksdb-cache-512mb",
+                "rocksdb-msgpack-cache-512mb",
+                (_, _) => new MsgPackCachedRocksDbCharacterRepository(RocksDbMode.Cache512Mb))
+            .AddKeyedSingleton<ICharacterRepository>(
+                "rocksdb-mempack-cache-512mb",
                 (_, _) => new CachedRocksDbCharacterRepository(RocksDbMode.Cache512Mb))
             .AddKeyedSingleton<ICharacterRepository>(
-                "rocksdb-cache-2gb",
+                "rocksdb-msgpack-cache-2gb",
+                (_, _) => new MsgPackCachedRocksDbCharacterRepository(RocksDbMode.Cache2Gb))
+            .AddKeyedSingleton<ICharacterRepository>(
+                "rocksdb-mempack-cache-2gb",
                 (_, _) => new CachedRocksDbCharacterRepository(RocksDbMode.Cache2Gb));
     }
 
     public static (ICharacterRepository[] AllRepos, string[] Labels, ICharacterRepository[] WarmableRepos)
         GetCharacterRepositories(this IServiceProvider provider)
     {
-        var inMemoryRepo = provider.GetRequiredKeyedService<ICharacterRepository>("inmemory");
-        var msgPackDiskOnlyRepo = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-msgpack-diskonly");
-        var diskOnlyRepo = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-diskonly");
-        var cache512MbRepo = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-cache-512mb");
-        var cache2GbRepo = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-cache-2gb");
+        var inMemory        = provider.GetRequiredKeyedService<ICharacterRepository>("inmemory");
+        var msgPackDisk     = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-msgpack-diskonly");
+        var memPackDisk     = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-diskonly");
+        var msgPack512Mb    = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-msgpack-cache-512mb");
+        var memPack512Mb    = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-mempack-cache-512mb");
+        var msgPack2Gb      = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-msgpack-cache-2gb");
+        var memPack2Gb      = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-mempack-cache-2gb");
 
         ICharacterRepository[] allRepos =
-            [inMemoryRepo, msgPackDiskOnlyRepo, diskOnlyRepo, cache512MbRepo, cache2GbRepo];
-        string[] labels = [LabelInMemory, LabelMsgPack, LabelMemPack, LabelCache512Mb, LabelCache2Gb];
-        ICharacterRepository[] warmableRepos = [cache512MbRepo, cache2GbRepo];
+            [inMemory, msgPackDisk, memPackDisk, msgPack512Mb, memPack512Mb, msgPack2Gb, memPack2Gb];
+        string[] labels =
+            [LabelInMemory, LabelMsgPackDisk, LabelMemPackDisk, LabelMsgPack512Mb, LabelMemPack512Mb, LabelMsgPack2Gb, LabelMemPack2Gb];
+        ICharacterRepository[] warmableRepos =
+            [msgPack512Mb, memPack512Mb, msgPack2Gb, memPack2Gb];
 
         return (allRepos, labels, warmableRepos);
     }
@@ -52,17 +63,27 @@ internal static class ServiceCollectionExtensions
     public static (ICharacterRepository[] Repos, string[] Labels) GetCompactionBenchmarkRepos(
         this IServiceProvider provider)
     {
-        var diskOnly = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-diskonly");
-        var cache2Gb = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-cache-2gb");
-        return ([diskOnly, cache2Gb], ["MemoryPack (4MB MemTable)", "MemoryPack (128MB MemTable)"]);
+        var msgPackDisk  = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-msgpack-diskonly");
+        var memPackDisk  = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-diskonly");
+        var msgPack2Gb   = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-msgpack-cache-2gb");
+        var memPack2Gb   = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-mempack-cache-2gb");
+        return (
+            [msgPackDisk, memPackDisk, msgPack2Gb, memPack2Gb],
+            ["MsgPack (4MB)", "MemPack (4MB)", "MsgPack (128MB)", "MemPack (128MB)"]
+        );
     }
 
     public static (ICharacterRepository[] Repos, string[] Labels) GetWriteBenchmarkRepos(
         this IServiceProvider provider)
     {
-        var memPackDiskOnly = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-diskonly");
-        var cache2Gb = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-cache-2gb");
-        return ([memPackDiskOnly, cache2Gb], ["MemoryPack (4MB MemTable)", "MemoryPack (128MB MemTable)"]);
+        var msgPackDisk  = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-msgpack-diskonly");
+        var memPackDisk  = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-diskonly");
+        var msgPack2Gb   = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-msgpack-cache-2gb");
+        var memPack2Gb   = provider.GetRequiredKeyedService<ICharacterRepository>("rocksdb-mempack-cache-2gb");
+        return (
+            [msgPackDisk, memPackDisk, msgPack2Gb, memPack2Gb],
+            ["MsgPack (4MB)", "MemPack (4MB)", "MsgPack (128MB)", "MemPack (128MB)"]
+        );
     }
 
     public static (PlayerCharacter[] WritePool, long Count) GenerateAndInitialize(this ICharacterRepository[] repos)

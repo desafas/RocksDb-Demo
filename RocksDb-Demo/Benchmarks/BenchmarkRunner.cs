@@ -179,7 +179,7 @@ internal static class BenchmarkRunner
     public static void PrintComparison(string title, params BenchmarkResult[] results)
     {
         const int labelWidth = 18;
-        const int colWidth = 33;
+        const int colWidth = 18;
 
         Console.WriteLine();
         Console.WriteLine($"=== {title} ({results[0].Count:N0} ops) ===");
@@ -202,7 +202,7 @@ internal static class BenchmarkRunner
         BenchmarkResult[][] resultsByThreadCount)
     {
         const int labelWidth = 18;
-        const int colWidth = 33;
+        const int colWidth = 18;
 
         var repoLabels = resultsByThreadCount[0].Select(r => r.Label).ToArray();
         var totalWidth = labelWidth + colWidth * repoLabels.Length;
@@ -352,7 +352,7 @@ internal static class BenchmarkRunner
     public static void PrintCompactionLatencyComparison(string title, CompactionLatencyResult[] results)
     {
         const int labelWidth = 26;
-        const int colWidth = 38;
+        const int colWidth = 18;
 
         Console.WriteLine();
         Console.WriteLine($"=== {title} ===");
@@ -481,8 +481,8 @@ internal static class BenchmarkRunner
 
     public static void PrintWriteComparison(string title, int[] batchSizes, WriteBenchmarkResult[][] resultsByBatchSize)
     {
-        const int labelWidth = 20;
-        const int colWidth = 38;
+        const int labelWidth = 22;
+        const int colWidth = 20;
 
         var repoLabels = resultsByBatchSize[0].Select(r => r.Label).ToArray();
         var totalWidth = labelWidth + colWidth * repoLabels.Length;

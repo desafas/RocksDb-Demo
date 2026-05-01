@@ -6,17 +6,23 @@ using RocksDbSharp;
 
 namespace RocksDb_Demo.Repositories.Disk.MessagePack;
 
-internal class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository, ICompactionMonitorable, ISettleable, IDisposable
+internal class MsgPackCachedRocksDbCharacterRepository : ICharacterRepository, ICompactionMonitorable, ISettleable, IDisposable
 {
+    private readonly RocksDbMode _mode;
     private readonly string _dbPath;
     private readonly ThreadLocal<byte[]> _keyBuffer = new(() => new byte[8]);
     private RocksDb _db = null!;
 
-    public MsgPackDiskOnlyRocksDbCharacterRepository()
+    public MsgPackCachedRocksDbCharacterRepository(RocksDbMode mode)
     {
-        _dbPath = Path.Combine(AppContext.BaseDirectory, "rocksdb-msgpack-diskonly");
+        if (mode == RocksDbMode.DiskOnly)
+            throw new ArgumentException("Use MsgPackDiskOnlyRocksDbCharacterRepository for DiskOnly mode.", nameof(mode));
+
+        _mode = mode;
+        _dbPath = Path.Combine(AppContext.BaseDirectory,
+            mode == RocksDbMode.Cache2Gb ? "rocksdb-msgpack-cache-2gb" : "rocksdb-msgpack-cache-512mb");
         OpenFresh();
-        Console.WriteLine($"RocksDB (MsgPack - DiskOnly) ready at: {_dbPath}");
+        Console.WriteLine($"RocksDB (MsgPack - {(mode == RocksDbMode.Cache2Gb ? "Cache 2GB" : "Cache 512MB")}) ready at: {_dbPath}");
     }
 
     public void Initialize(Dictionary<long, PlayerCharacter> characters)
@@ -78,6 +84,12 @@ internal class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository,
         _db.Write(wb);
     }
 
+    public void Truncate()
+    {
+        _db.Dispose();
+        OpenFresh();
+    }
+
     public void Settle() => _db.ForceSettle();
 
     public bool IsFlushActive =>
@@ -85,18 +97,12 @@ internal class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository,
 
     public string? GetCfStats() => _db.GetProperty("rocksdb.cfstats");
 
-    public void Truncate()
-    {
-        _db.Dispose();
-        OpenFresh();
-    }
-
     private void OpenFresh()
     {
         if (Directory.Exists(_dbPath))
             Directory.Delete(_dbPath, true);
         Directory.CreateDirectory(_dbPath);
-        _db = RocksDb.Open(new RocksDbSettings { Mode = RocksDbMode.DiskOnly }.BuildDbOptions(), _dbPath);
+        _db = RocksDb.Open(new RocksDbSettings { Mode = _mode }.BuildDbOptions(), _dbPath);
     }
 
     public void Dispose()
