@@ -26,13 +26,16 @@ internal static class BenchmarkRunner
         if (!isWarmup)
             Console.WriteLine($"  Running {label}...");
 
+        var gcBefore = GcStats.Capture();
         var sw = Stopwatch.StartNew();
 
         foreach (var id in ids)
             repo.GetCharacter(id);
 
         sw.Stop();
-        return new BenchmarkResult(label, count, sw.Elapsed.TotalMilliseconds);
+        var gc = gcBefore.Delta(GcStats.Capture());
+
+        return new BenchmarkResult(label, count, sw.Elapsed.TotalMilliseconds, gc);
     }
 
     public static async Task<BenchmarkResult> RunConcurrent(ICharacterRepository repo, long count, int threadCount,
@@ -57,8 +60,6 @@ internal static class BenchmarkRunner
 
         var chunkSize = (int)Math.Ceiling((double)count / threadCount);
 
-        var sw = Stopwatch.StartNew();
-
         var tasks = Enumerable.Range(0, threadCount).Select(t =>
         {
             var start = t * chunkSize;
@@ -69,12 +70,16 @@ internal static class BenchmarkRunner
                 foreach (var id in chunk.Span)
                     repo.GetCharacter(id);
             });
-        });
+        }).ToArray();
+
+        var gcBefore = GcStats.Capture();
+        var sw = Stopwatch.StartNew();
 
         await Task.WhenAll(tasks);
         sw.Stop();
+        var gc = gcBefore.Delta(GcStats.Capture());
 
-        return new BenchmarkResult(label, count, sw.Elapsed.TotalMilliseconds);
+        return new BenchmarkResult(label, count, sw.Elapsed.TotalMilliseconds, gc);
     }
 
     public static async Task<BenchmarkResult> RunMixedReadWrite(ICharacterRepository repo, PlayerCharacter[] writePool,
@@ -111,6 +116,7 @@ internal static class BenchmarkRunner
             }
         })).ToArray();
 
+        var gcBefore = GcStats.Capture();
         var sw = Stopwatch.StartNew();
 
         var readerTasks = Enumerable.Range(0, readerCount).Select(t =>
@@ -127,11 +133,12 @@ internal static class BenchmarkRunner
 
         await Task.WhenAll(readerTasks);
         sw.Stop();
+        var gc = gcBefore.Delta(GcStats.Capture());
 
         await cts.CancelAsync();
         await Task.WhenAll(writerTasks);
 
-        return new BenchmarkResult(label, totalReads, sw.Elapsed.TotalMilliseconds);
+        return new BenchmarkResult(label, totalReads, sw.Elapsed.TotalMilliseconds, gc);
     }
 
     public static BenchmarkResult RunBulkRead(ICharacterRepository repo, long count, int batchSize, string label,
@@ -154,6 +161,7 @@ internal static class BenchmarkRunner
         if (!isWarmup)
             Console.WriteLine($"  Running {label} (batch={batchSize:N0})...");
 
+        var gcBefore = GcStats.Capture();
         var sw = Stopwatch.StartNew();
 
         for (var i = 0; i < ids.Length; i += batchSize)
@@ -163,7 +171,9 @@ internal static class BenchmarkRunner
         }
 
         sw.Stop();
-        return new BenchmarkResult(label, count, sw.Elapsed.TotalMilliseconds);
+        var gc = gcBefore.Delta(GcStats.Capture());
+
+        return new BenchmarkResult(label, count, sw.Elapsed.TotalMilliseconds, gc);
     }
 
     public static void PrintComparison(string title, params BenchmarkResult[] results)
@@ -181,6 +191,9 @@ internal static class BenchmarkRunner
 
         PrintRow("Total time", labelWidth, colWidth, results, r => $"{r.TotalMs:N0} ms");
         PrintRow("Reads/sec", labelWidth, colWidth, results, r => $"{r.ReadsPerSecond:N0}");
+        PrintRow("Alloc/op", labelWidth, colWidth, results, r => FormatAllocPerOp(r.Gc.AllocatedBytes, r.Count));
+        PrintRow("Gen0 colls", labelWidth, colWidth, results, r => $"{r.Gc.Gen0}");
+        PrintRow("CPU cores", labelWidth, colWidth, results, r => $"{r.Gc.CpuTime.TotalMilliseconds / r.TotalMs:F1}");
 
         Console.WriteLine();
     }
@@ -207,6 +220,9 @@ internal static class BenchmarkRunner
             Console.WriteLine($" Threads: {threadCounts[i],2}".PadRight(totalWidth, '-'));
             PrintRow("Total time", labelWidth, colWidth, resultsByThreadCount[i], r => $"{r.TotalMs:N0} ms");
             PrintRow("Reads/sec", labelWidth, colWidth, resultsByThreadCount[i], r => $"{r.ReadsPerSecond:N0}");
+            PrintRow("Alloc/op", labelWidth, colWidth, resultsByThreadCount[i], r => FormatAllocPerOp(r.Gc.AllocatedBytes, r.Count));
+            PrintRow("Gen0 colls", labelWidth, colWidth, resultsByThreadCount[i], r => $"{r.Gc.Gen0}");
+            PrintRow("CPU cores", labelWidth, colWidth, resultsByThreadCount[i], r => $"{r.Gc.CpuTime.TotalMilliseconds / r.TotalMs:F1}");
         }
 
         Console.WriteLine();
@@ -269,6 +285,9 @@ internal static class BenchmarkRunner
         var readChunk = (int)Math.Ceiling((double)count / readerCount);
         var writeChunk = (int)Math.Ceiling((double)count / writerCount);
 
+        var gcBefore = GcStats.Capture();
+        var sw = Stopwatch.StartNew();
+
         var readerTaskArray = Enumerable.Range(0, readerCount).Select(t =>
         {
             var start = t * readChunk;
@@ -309,6 +328,9 @@ internal static class BenchmarkRunner
 
         await Task.WhenAll(readerTaskArray.Concat(writerTaskArray));
 
+        sw.Stop();
+        var gc = gcBefore.Delta(GcStats.Capture());
+
         await monitorCts.CancelAsync();
         await monitorTask;
 
@@ -320,8 +342,10 @@ internal static class BenchmarkRunner
             Label = label,
             FlushCount = flushCount,
             CompactionCount = compactionCount,
-            Reads = new LatencyStats(readLatencies.ToList()),
-            Writes = new LatencyStats(writeLatencies.ToList()),
+            Reads = new LatencyStats(readLatencies),
+            Writes = new LatencyStats(writeLatencies),
+            Gc = gc,
+            TotalMs = sw.Elapsed.TotalMilliseconds,
         };
     }
 
@@ -340,6 +364,10 @@ internal static class BenchmarkRunner
 
         PrintCompRow("Flushes", labelWidth, colWidth, results, r => $"{r.FlushCount}");
         PrintCompRow("Compactions", labelWidth, colWidth, results, r => $"{r.CompactionCount}");
+        PrintCompRow("CPU cores", labelWidth, colWidth, results,
+            r => $"{r.Gc.CpuTime.TotalMilliseconds / r.TotalMs:F1}");
+        PrintCompRow("Alloc/op (read)", labelWidth, colWidth, results,
+            r => FormatAllocPerOp(r.Gc.AllocatedBytes, r.Reads.Count + r.Writes.Count));
 
         Console.WriteLine();
         Console.WriteLine("READ LATENCY");
@@ -406,6 +434,7 @@ internal static class BenchmarkRunner
         var chunkSize = (int)Math.Ceiling((double)count / threadCount);
         var latencies = batchSize == 1 ? new long[count] : null;
 
+        var gcBefore = GcStats.Capture();
         var sw = Stopwatch.StartNew();
 
         var tasks = Enumerable.Range(0, threadCount).Select(t =>
@@ -437,6 +466,7 @@ internal static class BenchmarkRunner
 
         await Task.WhenAll(tasks);
         sw.Stop();
+        var gc = gcBefore.Delta(GcStats.Capture());
 
         return new WriteBenchmarkResult
         {
@@ -444,7 +474,8 @@ internal static class BenchmarkRunner
             Count = count,
             BatchSize = batchSize,
             TotalMs = sw.Elapsed.TotalMilliseconds,
-            Latency = latencies is null ? LatencyStats.Empty : new LatencyStats([.. latencies]),
+            Latency = latencies is null ? LatencyStats.Empty : new LatencyStats(latencies),
+            Gc = gc,
         };
     }
 
@@ -471,6 +502,17 @@ internal static class BenchmarkRunner
                 r => $"{r.WritesPerSecond:N0} writes/sec");
         }
 
+        Console.WriteLine("CPU & GC".PadRight(totalWidth, '-'));
+        for (var i = 0; i < batchSizes.Length; i++)
+        {
+            PrintWriteRow($"  CPU cores b={batchSizes[i]:N0}", labelWidth, colWidth, resultsByBatchSize[i],
+                r => $"{r.Gc.CpuTime.TotalMilliseconds / r.TotalMs:F1}");
+            PrintWriteRow($"  Alloc/op b={batchSizes[i]:N0}", labelWidth, colWidth, resultsByBatchSize[i],
+                r => FormatAllocPerOp(r.Gc.AllocatedBytes, r.Count));
+            PrintWriteRow($"  Gen0 colls b={batchSizes[i]:N0}", labelWidth, colWidth, resultsByBatchSize[i],
+                r => $"{r.Gc.Gen0}");
+        }
+
         var batchOneIndex = Array.IndexOf(batchSizes, 1);
         if (batchOneIndex >= 0)
         {
@@ -491,6 +533,13 @@ internal static class BenchmarkRunner
     {
         var row = name.PadRight(labelWidth) + string.Concat(results.Select(r => valueSelector(r).PadLeft(colWidth)));
         Console.WriteLine(row);
+    }
+
+    private static string FormatAllocPerOp(long totalBytes, long count)
+    {
+        if (count == 0) return "n/a";
+        var perOp = (double)totalBytes / count;
+        return perOp < 1024 ? $"{perOp:F0} B/op" : $"{perOp / 1024.0:F1} KB/op";
     }
 
     private static long[] BuildIds(long count, bool randomize)

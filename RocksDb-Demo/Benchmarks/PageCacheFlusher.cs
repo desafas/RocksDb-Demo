@@ -16,12 +16,13 @@ internal static class PageCacheFlusher
             File.WriteAllText("/proc/sys/vm/drop_caches", "3");
             _available = true;
         }
-        catch (Exception ex) when (_available is null)
+        catch (Exception ex)
         {
+            if (_available is not false)
+                Console.WriteLine(
+                    $"  WARNING: page cache flush failed ({ex.Message}). " +
+                    "Run the container with --privileged.");
             _available = false;
-            Console.WriteLine(
-                $"  WARNING: page cache flush failed ({ex.Message}). " +
-                "Run the container with --privileged.");
         }
     }
 }

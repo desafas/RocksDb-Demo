@@ -8,6 +8,9 @@ using RocksDb_Demo.Storage;
 Console.OutputEncoding = Encoding.UTF8;
 Console.WriteLine();
 
+ThreadPool.GetMinThreads(out _, out var minIoThreads);
+ThreadPool.SetMinThreads(64, minIoThreads);
+
 Console.WriteLine("Benchmark mode:");
 Console.WriteLine("  1. Steady-state: no settle, no flush — OS cache warms naturally, compactions may be in flight [default]");
 Console.WriteLine("  2. Cold-isolated: settle + flush — DB fully compacted and OS cache cleared before each benchmark");

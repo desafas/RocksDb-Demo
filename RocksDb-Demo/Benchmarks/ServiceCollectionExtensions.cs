@@ -79,7 +79,10 @@ internal static class ServiceCollectionExtensions
         Console.WriteLine();
 
         foreach (var repo in repos)
+        {
             repo.Initialize(charactersById);
+            (repo as ISettleable)?.Settle();
+        }
         Console.WriteLine("Repositories ready.");
         Console.WriteLine();
 

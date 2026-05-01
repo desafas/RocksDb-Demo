@@ -11,6 +11,11 @@ internal static class RocksDbExtensions
         if (!SettleEnabled)
             return;
 
+        db.ForceSettle();
+    }
+
+    public static void ForceSettle(this RocksDb db)
+    {
         var flushOptions = Native.Instance.rocksdb_flushoptions_create();
         try
         {

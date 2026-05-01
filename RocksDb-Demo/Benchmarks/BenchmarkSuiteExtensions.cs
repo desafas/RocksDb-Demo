@@ -101,6 +101,7 @@ internal static class BenchmarkSuiteExtensions
                 var repo = repos[r];
                 repo.Truncate();
                 repo.Initialize(baseCharacters);
+                (repo as ISettleable)?.Settle();
                 results[b][r] = await BenchmarkRunner.RunBatchedWrites(
                     repo, updatePool, batchSizes[b], threadCount, labels[r]);
             }
@@ -124,6 +125,7 @@ internal static class BenchmarkSuiteExtensions
                 var repo = repos[r];
                 repo.Truncate();
                 repo.Initialize(baseCharacters);
+                (repo as ISettleable)?.Settle();
                 results[b][r] = await BenchmarkRunner.RunBatchedWrites(
                     repo, insertPool, batchSizes[b], threadCount, labels[r]);
             }

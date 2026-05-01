@@ -6,7 +6,7 @@ using RocksDbSharp;
 
 namespace RocksDb_Demo.Repositories.Disk.MemoryPack;
 
-internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompactionMonitorable, IDisposable
+internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompactionMonitorable, ISettleable, IDisposable
 {
     private readonly RocksDbMode _mode;
     private readonly string _dbPath;
@@ -16,6 +16,9 @@ internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompact
 
     public CachedRocksDbCharacterRepository(RocksDbMode mode)
     {
+        if (mode == RocksDbMode.DiskOnly)
+            throw new ArgumentException("Use DiskOnlyRocksDbCharacterRepository for DiskOnly mode.", nameof(mode));
+
         _mode = mode;
         _label = mode == RocksDbMode.Cache2Gb
             ? "RocksDB (MemoryPack - Cache 2GB)"
@@ -91,6 +94,8 @@ internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompact
         _db.Dispose();
         OpenFresh();
     }
+
+    public void Settle() => _db.ForceSettle();
 
     public bool IsFlushActive =>
         _db.GetProperty("rocksdb.num-running-flushes") is string s && s != "0";

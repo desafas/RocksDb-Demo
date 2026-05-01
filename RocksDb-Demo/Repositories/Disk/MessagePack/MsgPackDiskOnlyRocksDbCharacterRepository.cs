@@ -6,7 +6,7 @@ using RocksDbSharp;
 
 namespace RocksDb_Demo.Repositories.Disk.MessagePack;
 
-internal class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository, IDisposable
+internal class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository, ISettleable, IDisposable
 {
     private readonly string _dbPath;
     private readonly ThreadLocal<byte[]> _keyBuffer = new(() => new byte[8]);
@@ -77,6 +77,8 @@ internal class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository,
         }
         _db.Write(wb);
     }
+
+    public void Settle() => _db.ForceSettle();
 
     public void Truncate()
     {

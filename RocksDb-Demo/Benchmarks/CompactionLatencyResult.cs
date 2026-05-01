@@ -8,11 +8,11 @@ internal class LatencyStats
 
     private LatencyStats() { }
 
-    public LatencyStats(List<long> ticks)
+    public LatencyStats(long[] ticks)
     {
-        Count = ticks.Count;
+        Count = ticks.Length;
         if (Count == 0) return;
-        ticks.Sort();
+        Array.Sort(ticks);
         P50Ms = TicksToMs(ticks[(int)(Count * 0.50)]);
         P95Ms = TicksToMs(ticks[(int)(Count * 0.95)]);
         P99Ms = TicksToMs(ticks[(int)(Count * 0.99)]);
@@ -35,4 +35,6 @@ internal class CompactionLatencyResult
     public required int CompactionCount { get; init; }
     public required LatencyStats Reads { get; init; }
     public required LatencyStats Writes { get; init; }
+    public required GcStats Gc { get; init; }
+    public required double TotalMs { get; init; }
 }

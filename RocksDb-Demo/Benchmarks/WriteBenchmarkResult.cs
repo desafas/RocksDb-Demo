@@ -7,6 +7,7 @@ internal class WriteBenchmarkResult
     public required int BatchSize { get; init; }
     public required double TotalMs { get; init; }
     public required LatencyStats Latency { get; init; }
+    public required GcStats Gc { get; init; }
 
     public double WritesPerSecond => Count / (TotalMs / 1000.0);
 }
