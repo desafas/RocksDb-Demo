@@ -31,7 +31,6 @@ internal class LatencyStats
 internal class CompactionLatencyResult
 {
     public required string Label { get; init; }
-    public required int FlushCount { get; init; }
     public required int CompactionCount { get; init; }
     public required LatencyStats Reads { get; init; }
     public required LatencyStats Writes { get; init; }

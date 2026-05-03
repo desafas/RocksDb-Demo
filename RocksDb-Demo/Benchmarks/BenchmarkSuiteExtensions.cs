@@ -78,7 +78,6 @@ internal static class BenchmarkSuiteExtensions
             var monitor = (ICompactionMonitorable)repo;
             results.Add(await BenchmarkRunner.RunCompactionLatency(
                 repo, writePool, readerCount, writerCount,
-                () => monitor.IsFlushActive,
                 monitor.GetCfStats,
                 label));
         }

@@ -97,9 +97,6 @@ internal class CachedRocksDbCharacterRepository : ICharacterRepository, ICompact
 
     public void Settle() => _db.ForceSettle();
 
-    public bool IsFlushActive =>
-        _db.GetProperty("rocksdb.num-running-flushes") is string s && s != "0";
-
     public string? GetCfStats() => _db.GetProperty("rocksdb.cfstats");
 
     private void OpenFresh()

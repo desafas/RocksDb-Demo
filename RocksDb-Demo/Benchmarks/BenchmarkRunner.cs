@@ -233,7 +233,6 @@ internal static class BenchmarkRunner
         PlayerCharacter[] writePool,
         int readerCount,
         int writerCount,
-        Func<bool> isFlushActive,
         Func<string?> getCfStats,
         string label)
     {
@@ -260,27 +259,6 @@ internal static class BenchmarkRunner
 
         var readLatencies = new long[count];
         var writeLatencies = new long[count];
-
-        var wasFlushActive = false;
-        var flushCount = 0;
-        using var monitorCts = new CancellationTokenSource();
-
-        var monitorTask = Task.Run(async () =>
-        {
-            wasFlushActive = isFlushActive();
-
-            while (!monitorCts.Token.IsCancellationRequested)
-            {
-                var flushing = isFlushActive();
-
-                if (!flushing && wasFlushActive)
-                    Interlocked.Increment(ref flushCount);
-                wasFlushActive = flushing;
-
-                try { await Task.Delay(10, monitorCts.Token); }
-                catch (OperationCanceledException) { break; }
-            }
-        });
 
         var readChunk = (int)Math.Ceiling((double)count / readerCount);
         var writeChunk = (int)Math.Ceiling((double)count / writerCount);
@@ -331,16 +309,12 @@ internal static class BenchmarkRunner
         sw.Stop();
         var gc = gcBefore.Delta(GcStats.Capture());
 
-        await monitorCts.CancelAsync();
-        await monitorTask;
-
         var cfStatsAfter = getCfStats();
         var compactionCount = ParseSumCompCount(cfStatsAfter) - ParseSumCompCount(cfStatsBefore);
 
         return new CompactionLatencyResult
         {
             Label = label,
-            FlushCount = flushCount,
             CompactionCount = compactionCount,
             Reads = new LatencyStats(readLatencies),
             Writes = new LatencyStats(writeLatencies),
@@ -362,7 +336,6 @@ internal static class BenchmarkRunner
         Console.WriteLine(header);
         Console.WriteLine(new string('-', labelWidth + colWidth * results.Length));
 
-        PrintCompRow("Flushes", labelWidth, colWidth, results, r => $"{r.FlushCount}");
         PrintCompRow("Compactions", labelWidth, colWidth, results, r => $"{r.CompactionCount}");
         PrintCompRow("CPU cores", labelWidth, colWidth, results,
             r => $"{r.Gc.CpuTime.TotalMilliseconds / r.TotalMs:F1}");

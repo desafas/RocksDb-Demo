@@ -80,9 +80,6 @@ internal class MsgPackDiskOnlyRocksDbCharacterRepository : ICharacterRepository,
 
     public void Settle() => _db.ForceSettle();
 
-    public bool IsFlushActive =>
-        _db.GetProperty("rocksdb.num-running-flushes") is string s && s != "0";
-
     public string? GetCfStats() => _db.GetProperty("rocksdb.cfstats");
 
     public void Truncate()
